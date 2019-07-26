@@ -1,0 +1,166 @@
+server:
+  port: 8083
+  servlet:
+    context-path: "/supplier"
+
+#Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+
+datasource:
+  url: "jdbc:mysql://localhost:3306/ecom-supplier"
+  username: root
+  password: admin
+
+quartz:
+  datasource:
+    url: "jdbc:mysql://localhost:3306/ecom-quartz"
+    username: root
+    password: admin
+  job-store-type: jdbc
+  jdbc:
+    initialize-schema: never
+  properties:
+    org:
+      quartz:
+        scheduler:
+          instanceId: AUTO
+          makeSchedulerThreadDaemon: true
+          instanceName: ecom-supplier
+        threadPool:
+          threadCount: 3
+          class: org.quartz.simpl.SimpleThreadPool
+          makeThreadsDaemons: false
+        jobStore:
+          class: org.quartz.impl.jdbcjobstore.JobStoreTX
+          driverDelegateClass: org.quartz.impl.jdbcjobstore.StdJDBCDelegate
+          tablePrefix: qrtz_
+          isClustered: true
+          misfireThreshold: 60000
+          clusterCheckinInterval: 20000
+spring:
+  http:
+    log-request-details: true
+  devtools:
+    restart:
+      log-condition-evaluation-delta: false
+
+bootstrap:
+  servers: &kafkaServer "127.0.0.1:9092"
+
+kafka:
+  serialization:
+    serializer:
+      key: &kafkaKeySerializer org.apache.kafka.common.serialization.StringSerializer
+      value: &kafkaValueSerializer JsonSerializerJMS
+    desirializer:
+      key: &kafkaKeyDeserializer org.apache.kafka.common.serialization.StringDeserializer
+      value: &kafkaValueDeserializer JsonDeserializerJMS
+  listener:
+    ack-mode: RECORD
+  producer:
+    topic:
+    factory:
+      config:
+        bootstrap:
+          servers: *kafkaServer
+        key:
+          serializer: *kafkaKeySerializer
+        value:
+          serializer: *kafkaValueSerializer
+        enable:
+          idempotence: true
+        transactional:
+          id: tr-supplier-id
+        reconnect:
+          backoff:
+            ms: 4000
+            max:
+              ms: 12000
+        max:
+          block:
+            ms: 1000
+        request:
+          timeout:
+            ms: 10000
+    transaction-id-prefix: supplier
+  consumer:
+    inventory:
+      poll:
+        duration: 10000
+      topic:
+        brand:
+          insert: inventory_brand_insert
+          update: inventory_brand_update
+          delete: inventory_brand_delete
+        category:
+          insert: inventory_category_insert
+          update: inventory_category_update
+          delete: inventory_category_delete
+        good:
+          insert: inventory_good_insert
+          update: inventory_good_update
+          delete: inventory_good_delete
+    factory:
+      config:
+        bootstrap:
+          servers: *kafkaServer
+        #          key:
+        #            deserializer: *kafkaKeyDeserializer
+        #          value:
+        #            deserializer: *kafkaValueDeserializer
+        group:
+          id: inventoryUpdate
+        isolation:
+          level: read_committed
+        enable:
+          auto:
+            commit: false
+        auto:
+          offset:
+            reset: earliest
+        session:
+          timeout:
+            ms: 55000
+        max:
+          poll:
+            records: 10
+            interval:
+              ms: 60000
+    termination:
+      timeout-ms: 10000
+
+logging:
+  file: log.txt
+  level:
+    root: INFO
+    org:
+      springframework:
+        web: DEBUG
+        boot:
+          autoconfigure: ERROR
+        jdbc:
+          core: DEBUG
+  org:
+    springframework:
+      boot:
+        autoconfigure:
+          logging:
+            ConditionEvaluationReportLoggingListener: DEBUG
+
+## supplier offers are partly delivered by email (attachments)
+mail:
+  offers:
+    storage:
+      imap:
+        ssl:
+          enable: true
+        port: 993
+        timeout: 5000
+        connectiontimeout: 5000
+      store:
+        protocol: imaps
+      server: imap.yandex.ru
